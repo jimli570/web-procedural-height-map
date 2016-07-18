@@ -1,0 +1,315 @@
+<!doctype html>
+<html>
+
+<head>
+  <title>Procedural Heightmap</title>
+
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" type="text/css" href="css/style.css">
+
+  <!-- Libs -->
+  <script type="text/javascript" src="js/lib/dat.gui.min.js"></script>
+  <script type="text/javascript" src="js/lib/three.min.js"></script>
+  <script type="text/javascript" src="js/lib/OrbitControls.js"></script>
+
+  <!-- My files -->
+  <script type="text/javascript" src="js/main.js"></script>
+  <script type="text/javascript" src="js/vis.js"></script>
+  <script type="text/javascript" src="js/gui.js"></script>
+</head>
+
+<body>
+
+  <script type="x-shader/x-vertex" id="vsMap">
+			//
+			// GLSL textureless classic 2D noise "cnoise",
+			// with an RSL-style periodic variant "pnoise".
+			// Author:  Stefan Gustavson (stefan.gustavson@liu.se)
+			// Version: 2011-08-22
+			//
+			// Many thanks to Ian McEwan of Ashima Arts for the
+			// ideas for permutation and gradient selection.
+			//
+			// Copyright (c) 2011 Stefan Gustavson. All rights reserved.
+			// Distributed under the MIT license. See LICENSE file.
+			// https://github.com/ashima/webgl-noise
+			//
+
+			vec4 mod289(vec4 x)
+			{
+			  return x - floor(x * (1.0 / 289.0)) * 289.0;
+			}
+
+			vec4 permute(vec4 x)
+			{
+			  return mod289(((x*34.0)+1.0)*x);
+			}
+
+			vec4 taylorInvSqrt(vec4 r)
+			{
+			  return 1.79284291400159 - 0.85373472095314 * r;
+			}
+
+			vec2 fade(vec2 t) {
+			  return t*t*t*(t*(t*6.0-15.0)+10.0);
+			}
+
+			// Classic Perlin noise
+			float cnoise(vec2 P)
+			{
+			  vec4 Pi = floor(P.xyxy) + vec4(0.0, 0.0, 1.0, 1.0);
+			  vec4 Pf = fract(P.xyxy) - vec4(0.0, 0.0, 1.0, 1.0);
+			  Pi = mod289(Pi); // To avoid truncation effects in permutation
+			  vec4 ix = Pi.xzxz;
+			  vec4 iy = Pi.yyww;
+			  vec4 fx = Pf.xzxz;
+			  vec4 fy = Pf.yyww;
+
+			  vec4 i = permute(permute(ix) + iy);
+
+			  vec4 gx = fract(i * (1.0 / 41.0)) * 2.0 - 1.0 ;
+			  vec4 gy = abs(gx) - 0.5 ;
+			  vec4 tx = floor(gx + 0.5);
+			  gx = gx - tx;
+
+			  vec2 g00 = vec2(gx.x,gy.x);
+			  vec2 g10 = vec2(gx.y,gy.y);
+			  vec2 g01 = vec2(gx.z,gy.z);
+			  vec2 g11 = vec2(gx.w,gy.w);
+
+			  vec4 norm = taylorInvSqrt(vec4(dot(g00, g00), dot(g01, g01), dot(g10, g10), dot(g11, g11)));
+			  g00 *= norm.x;  
+			  g01 *= norm.y;  
+			  g10 *= norm.z;  
+			  g11 *= norm.w;  
+
+			  float n00 = dot(g00, vec2(fx.x, fy.x));
+			  float n10 = dot(g10, vec2(fx.y, fy.y));
+			  float n01 = dot(g01, vec2(fx.z, fy.z));
+			  float n11 = dot(g11, vec2(fx.w, fy.w));
+
+			  vec2 fade_xy = fade(Pf.xy);
+			  vec2 n_x = mix(vec2(n00, n01), vec2(n10, n11), fade_xy.x);
+			  float n_xy = mix(n_x.x, n_x.y, fade_xy.y);
+			  return 2.3 * n_xy;
+			}
+
+			// Classic Perlin noise, periodic variant
+			float pnoise(vec2 P, vec2 rep)
+			{
+			  vec4 Pi = floor(P.xyxy) + vec4(0.0, 0.0, 1.0, 1.0);
+			  vec4 Pf = fract(P.xyxy) - vec4(0.0, 0.0, 1.0, 1.0);
+			  Pi = mod(Pi, rep.xyxy); // To create noise with explicit period
+			  Pi = mod289(Pi);        // To avoid truncation effects in permutation
+			  vec4 ix = Pi.xzxz;
+			  vec4 iy = Pi.yyww;
+			  vec4 fx = Pf.xzxz;
+			  vec4 fy = Pf.yyww;
+
+			  vec4 i = permute(permute(ix) + iy);
+
+			  vec4 gx = fract(i * (1.0 / 41.0)) * 2.0 - 1.0 ;
+			  vec4 gy = abs(gx) - 0.5 ;
+			  vec4 tx = floor(gx + 0.5);
+			  gx = gx - tx;
+
+			  vec2 g00 = vec2(gx.x,gy.x);
+			  vec2 g10 = vec2(gx.y,gy.y);
+			  vec2 g01 = vec2(gx.z,gy.z);
+			  vec2 g11 = vec2(gx.w,gy.w);
+
+			  vec4 norm = taylorInvSqrt(vec4(dot(g00, g00), dot(g01, g01), dot(g10, g10), dot(g11, g11)));
+			  g00 *= norm.x;  
+			  g01 *= norm.y;  
+			  g10 *= norm.z;  
+			  g11 *= norm.w;  
+
+			  float n00 = dot(g00, vec2(fx.x, fy.x));
+			  float n10 = dot(g10, vec2(fx.y, fy.y));
+			  float n01 = dot(g01, vec2(fx.z, fy.z));
+			  float n11 = dot(g11, vec2(fx.w, fy.w));
+
+			  vec2 fade_xy = fade(Pf.xy);
+			  vec2 n_x = mix(vec2(n00, n01), vec2(n10, n11), fade_xy.x);
+			  float n_xy = mix(n_x.x, n_x.y, fade_xy.y);
+			  return 2.3 * n_xy;
+			}
+
+			varying float noiseValue;
+			varying vec2 pos;
+
+			/* Input from GUI  */
+			uniform float freqX, freqY, posX, posY;
+			uniform int octaves;
+
+			/* Other values from CPU */
+			uniform int time;
+			uniform float xSeg, ySeg, maxHeight;
+
+			float getHeight(vec2 seed)
+			{
+				// Settings
+			  const int MAX_OCTAVES = 20;
+				float amp = 1.0;
+
+				vec2 freq = vec2(freqX, freqY);
+				vec2 offsetVec = vec2(posX, posY);
+
+				vec2 period = vec2(1000.0);
+
+				float noiseValue = 0.0;
+				float totalAmp = 0.0;
+
+				for(int i = 0; i < MAX_OCTAVES; ++i)
+				{
+					noiseValue += amp * cnoise( vec2(mod(seed.x + offsetVec.x, period.x) * freq.x,
+							           	 	   		 mod(seed.y + offsetVec.y, period.y) * freq.y) );
+
+					totalAmp += amp; // Max possible values
+					freq = freq * 2.0;
+					amp  = amp / 2.0;
+
+					if (i == octaves) { break; }
+				}
+				
+				noiseValue = (totalAmp + noiseValue) * 0.5; //< [-totalAmp, totalAmp] --> [0.0, totalAmp]
+				noiseValue /= totalAmp; // Normalize [0, 1]
+				
+				return noiseValue;
+			}
+
+			void main() {
+        // Seed [0, 1]
+        pos = vec2( (1.0 + position.x) * 0.5, (1.0 + position.y) * 0.5 );
+				noiseValue = getHeight(pos);
+				
+				// Move point in normal direction
+				vec3 newPosition = position + (noiseValue - 0.5) * normal * maxHeight;
+
+				gl_Position = projectionMatrix * modelViewMatrix * vec4( newPosition, 1.0 );
+			}
+		</script>
+
+  <script type="x-shader/x-fragment" id="fsMap">
+			uniform int time;
+			uniform float width, height;
+			uniform float xSeg, ySeg;
+			uniform vec3 rainbow[ 5 ];
+
+			varying float noiseValue;
+			varying vec2 pos;
+
+			vec3 gridPos(vec2 cellCenter, vec2 coords, float size)
+			{
+				// Color for grid-pos
+				vec3 gridCol = vec3(1.0, 0.0, 0.0);
+
+				// Calculate distance in pixels
+				float dist = distance( vec2(cellCenter.x * width, cellCenter.y * height), 
+						  			   vec2(coords.x * width, coords.y * height) );
+
+				gridCol = (1.0 - step(size, dist)) * gridCol;
+
+				return gridCol;
+			}
+
+			vec3 colorize( vec2 coords, float noiseValue )
+			{
+				vec3 color = vec3(0.0);
+
+				const int numOfColors = 5;
+				float step 	= 1.0/float(numOfColors);
+				float val 	= 1.0;
+
+				for(int i = 0; i < numOfColors; ++i) 
+				{
+					val -= step;
+					
+					if( val < noiseValue ) {
+						float st = smoothstep(val, val + step, noiseValue);
+						color 	 = st * rainbow[ i ] + ( 1.0 - st ) * rainbow[ i + 1 ];
+
+						break;
+					}
+				}
+
+				return color;
+			}
+
+			vec3 heightLines(vec3 color, float noiseValue)
+			{
+        // noiseValue = [0, 1]
+				float val  = 1.0;
+        float numOfSteps = 20.0;
+        float stepLength = val / numOfSteps;
+
+				vec3 lineColor = vec3(0.0);
+
+        float bias = 0.05 * stepLength; // Allowed deviation from line
+
+				for(int i = 0; i < 20; ++i) 
+				{
+					if (noiseValue > (val - bias)) {
+						float st 	= smoothstep( val - bias, val + bias, noiseValue );
+						color 		= st * color + ( 1.0 - st ) * lineColor;
+
+						break;
+					}
+
+					val -= stepLength;
+				}
+
+				return color;
+			}
+
+			vec3 drawBorder(vec2 coords, vec3 color)
+			{
+				float borderSize = 0.0125 * 1.0; // 1.25%
+				vec3 borderColor = vec3(1.0);
+
+				float distX = min( coords.x, abs(coords.x - 1.0) );
+				float distY = min( coords.y, abs(coords.y - 1.0) );
+
+				if ( (distX < borderSize) || (distY < borderSize)) {
+					float st = smoothstep( borderSize * 0.9, borderSize, min( distX, distY ) );
+					color		 = st * color + ( 1.0 - st ) * borderColor;
+				}
+
+				return color;
+			}
+
+			void main() 
+			{
+			    /* Screenspace  */
+			    vec2 coords = vec2( gl_FragCoord.x / width, gl_FragCoord.y / height );
+
+			    /* Colorize */
+			    vec3 finalColor = colorize(coords, noiseValue);
+
+			    /* Height-lines */
+			    finalColor = heightLines(finalColor, noiseValue);
+
+					/* Downsample colors  */
+					float numOfColors = 8.0;
+					finalColor =		vec3( floor( numOfColors * finalColor.x ) / numOfColors,
+										  				  floor( numOfColors * finalColor.y ) / numOfColors,
+										  					floor( numOfColors * finalColor.z ) / numOfColors);
+
+
+			    /* apply gamma correction */
+			    float gamma = 2.2;
+			    finalColor = pow( finalColor, vec3( 1.0/gamma ) );
+
+
+			    /* Draw border around map */
+					finalColor 	 = drawBorder( pos, finalColor );
+					gl_FragColor = vec4( finalColor, 1.0 );
+			}
+		</script>
+
+  <div id="GUIContainer"></div>
+  <div id="VisContainer"></div>
+
+</body>
+
+</html>
